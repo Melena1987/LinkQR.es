@@ -38,16 +38,29 @@ function App() {
       
       if (currentUser) {
         try {
+            // Nota: La colección en tu captura es 'user' (singular)
             const userDocRef = doc(db, 'user', currentUser.uid);
             const userDoc = await getDoc(userDocRef);
             
-            if (userDoc.exists() && userDoc.data().role === 'PRO') {
-                setIsPro(true);
+            if (userDoc.exists()) {
+                const data = userDoc.data();
+                // Verificación robusta (elimina espacios y acepta minúsculas)
+                const role = data?.role?.toString().trim().toUpperCase();
+                
+                if (role === 'PRO') {
+                    console.log("Usuario PRO detectado");
+                    setIsPro(true);
+                } else {
+                    console.log("Usuario detectado con rol:", role);
+                    setIsPro(false);
+                }
             } else {
+                console.log("Documento de usuario no encontrado en colección 'user'");
                 setIsPro(false);
             }
         } catch (error) {
-            console.error("Error checking PRO status:", error);
+            console.error("Error verificando estatus PRO:", error);
+            console.warn("Posible causa: Reglas de seguridad. Asegúrate de que 'match /user/{userId}' existe en Firestore Rules.");
             setIsPro(false);
         }
       } else {
@@ -133,8 +146,6 @@ function App() {
         alert('¡QR creado exitosamente!');
         
         // After creating, maybe clear the editor or offer to go to dashboard
-        // For now, let's just reset the editing ID so subsequent saves create new ones unless handled otherwise
-        // Actually, usually you stay on the page. Let's ask user.
         if (confirm("¿Quieres ver tus QRs?")) {
             setCurrentView('dashboard');
         }

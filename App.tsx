@@ -10,21 +10,42 @@ import { Wand2, Loader2 } from 'lucide-react';
 import { Auth } from './components/auth/Auth';
 import { auth, db, storage } from './firebase';
 import { onAuthStateChanged, User } from "firebase/auth";
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPro, setIsPro] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabType>('content');
   const [config, setConfig] = useState<QRConfig>(INITIAL_CONFIG);
 
   // Monitor Authentication State
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
+      if (currentUser) {
+        try {
+            // Verificamos la colección 'user' basándonos en tu captura de pantalla
+            const userDocRef = doc(db, 'user', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
+            
+            if (userDoc.exists() && userDoc.data().role === 'PRO') {
+                setIsPro(true);
+            } else {
+                setIsPro(false);
+            }
+        } catch (error) {
+            console.error("Error checking PRO status:", error);
+            setIsPro(false);
+        }
+      } else {
+        setIsPro(false);
+      }
+
       setLoadingAuth(false);
     });
     return () => unsubscribe();
@@ -131,7 +152,7 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header user={user} />
+      <Header user={user} isPro={isPro} />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         

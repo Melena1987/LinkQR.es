@@ -8,12 +8,15 @@ import { QRConfig, TabType } from './types';
 import { INITIAL_CONFIG, PRESETS } from './constants';
 import { Wand2, Loader2 } from 'lucide-react';
 import { Auth } from './components/auth/Auth';
-import { auth } from './firebase';
+import { auth, db, storage } from './firebase';
 import { onAuthStateChanged, User } from "firebase/auth";
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabType>('content');
   const [config, setConfig] = useState<QRConfig>(INITIAL_CONFIG);
@@ -33,6 +36,57 @@ function App() {
 
   const applyTemplate = (presetConfig: Partial<QRConfig>) => {
     setConfig((prev) => ({ ...prev, ...presetConfig }));
+  };
+
+  const handleSave = async () => {
+    if (!user) return;
+    
+    // Basic validation for dynamic QR
+    if (config.qrType === 'dynamic' && !config.shortUrlId.trim()) {
+      alert("Por favor, ingresa un ID válido para el enlace corto.");
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      let finalLogoUrl = config.logoUrl;
+
+      // Upload logo to Storage if it's a base64 string (newly selected file)
+      // Base64 strings from FileReader start with "data:"
+      if (config.logoUrl && config.logoUrl.startsWith('data:')) {
+        // Create a reference: userId/timestamp_logo.png
+        // Using timestamp to ensure uniqueness
+        const storageRef = ref(storage, `${user.uid}/${Date.now()}_logo`);
+        
+        // Upload the base64 string
+        await uploadString(storageRef, config.logoUrl, 'data_url');
+        
+        // Get the public download URL
+        finalLogoUrl = await getDownloadURL(storageRef);
+      }
+
+      // Prepare data object for Firestore
+      const qrData = {
+        ...config,
+        logoUrl: finalLogoUrl || null, // Ensure undefined becomes null for Firestore
+        userId: user.uid,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
+
+      // Add to 'qrs' collection
+      // Note: Rules require resource.data.userId == request.auth.uid
+      await addDoc(collection(db, 'qrs'), qrData);
+
+      alert('¡QR guardado exitosamente!');
+      
+    } catch (error) {
+      console.error("Error saving QR:", error);
+      alert("Error al guardar el QR. Por favor intenta de nuevo.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const renderEditorContent = () => {
@@ -102,17 +156,25 @@ function App() {
                 <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-between items-center sticky bottom-0 z-20">
                    <button 
                       onClick={() => setConfig(INITIAL_CONFIG)}
-                      className="text-sm text-gray-500 hover:text-gray-800 font-medium px-4 py-2"
+                      disabled={isSaving}
+                      className="text-sm text-gray-500 hover:text-gray-800 font-medium px-4 py-2 disabled:opacity-50"
                    >
                      Restablecer
                    </button>
                    <div className="flex gap-3">
-                      <button className="px-6 py-2.5 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors">
+                      <button 
+                        disabled={isSaving}
+                        className="px-6 py-2.5 rounded-lg text-sm font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                      >
                         Cancelar
                       </button>
-                      <button className="px-6 py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-colors flex items-center gap-2">
-                        <Wand2 className="w-4 h-4" />
-                        Guardar
+                      <button 
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="px-6 py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-colors flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                      >
+                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                        {isSaving ? 'Guardando...' : 'Guardar'}
                       </button>
                    </div>
                 </div>

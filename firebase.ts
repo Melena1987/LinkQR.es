@@ -1,8 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
-// Usamos import.meta.env para leer las variables de entorno en Vite/Netlify
-// Casting import.meta to any to avoid TypeScript errors since types/vite-client might be missing
 const env = (import.meta as any).env;
 
 const firebaseConfig = {

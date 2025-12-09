@@ -20,9 +20,16 @@ type ViewType = 'editor' | 'dashboard' | 'profile';
 function App() {
   // Estado de Enrutamiento / Redirección
   const [resolvingLink, setResolvingLink] = useState(() => {
-    const path = window.location.pathname;
+    let path = window.location.pathname;
+    
+    // Normalizar path: eliminar slash final si existe y no es la raíz
+    if (path.length > 1 && path.endsWith('/')) {
+        path = path.slice(0, -1);
+    }
+
     // Ignorar rutas propias de la app para evitar buscar "dashboard" como un QR
     const isAppRoute = ['/dashboard', '/profile', '/login'].includes(path);
+    
     // Activar resolución si hay un path, no es root, no es index.html y no es una ruta interna
     return path.length > 1 && path !== '/index.html' && path !== '/' && !isAppRoute;
   });
@@ -46,7 +53,8 @@ function App() {
   useEffect(() => {
     if (resolvingLink) {
         // Quitar el '/' inicial y eliminar cualquier barra final (trailing slash) para evitar errores de búsqueda
-        const slug = window.location.pathname.substring(1).replace(/\/$/, ''); 
+        const rawPath = window.location.pathname;
+        const slug = rawPath.substring(1).replace(/\/$/, ''); 
         
         const resolveUrl = async () => {
             try {

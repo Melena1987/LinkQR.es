@@ -8,59 +8,93 @@ import { Dashboard } from './components/dashboard/Dashboard';
 import { Profile } from './components/profile/Profile';
 import { QRConfig, TabType } from './types';
 import { INITIAL_CONFIG, PRESETS } from './constants';
-import { Wand2, Loader2 } from 'lucide-react';
+import { Wand2, Loader2, QrCode, AlertCircle } from 'lucide-react';
 import { Auth } from './components/auth/Auth';
 import { auth, db, storage } from './firebase';
 import { onAuthStateChanged, User } from "firebase/auth";
-import { collection, addDoc, Timestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 type ViewType = 'editor' | 'dashboard' | 'profile';
 
 function App() {
+  // Estado de Enrutamiento / Redirección
+  const [resolvingLink, setResolvingLink] = useState(() => {
+    const path = window.location.pathname;
+    // Ignorar rutas propias de la app para evitar buscar "dashboard" como un QR
+    const isAppRoute = ['/dashboard', '/profile', '/login'].includes(path);
+    // Activar resolución si hay un path, no es root, no es index.html y no es una ruta interna
+    return path.length > 1 && path !== '/index.html' && path !== '/' && !isAppRoute;
+  });
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  // Estado de la App
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isPro, setIsPro] = useState(false);
 
-  // Navigation State
+  // Estado de Navegación
   const [currentView, setCurrentView] = useState<ViewType>('editor');
 
-  // Editor State
+  // Estado del Editor
   const [activeTab, setActiveTab] = useState<TabType>('content');
   const [config, setConfig] = useState<QRConfig>(INITIAL_CONFIG);
   const [editingQrId, setEditingQrId] = useState<string | null>(null);
 
-  // Monitor Authentication State
+  // Lógica: Manejar Redirección de Enlaces Dinámicos
+  useEffect(() => {
+    if (resolvingLink) {
+        // Quitar el '/' inicial y eliminar cualquier barra final (trailing slash) para evitar errores de búsqueda
+        const slug = window.location.pathname.substring(1).replace(/\/$/, ''); 
+        
+        const resolveUrl = async () => {
+            try {
+                const q = query(collection(db, 'qrs'), where('shortUrlId', '==', slug));
+                const snapshot = await getDocs(q);
+                
+                if (!snapshot.empty) {
+                    const data = snapshot.docs[0].data();
+                    let url = data.destinationUrl;
+                    // Asegurar protocolo
+                    if (!/^https?:\/\//i.test(url)) {
+                        url = 'https://' + url;
+                    }
+                    // Realizar la redirección
+                    window.location.replace(url);
+                } else {
+                    setLinkError('Enlace no encontrado');
+                    setResolvingLink(false);
+                }
+            } catch (error) {
+                console.error("Error resolviendo enlace:", error);
+                setLinkError('Error al procesar el enlace');
+                setResolvingLink(false);
+            }
+        };
+        resolveUrl();
+    }
+  }, [resolvingLink]);
+
+  // Monitor de Autenticación
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
       if (currentUser) {
         try {
-            // Nota: La colección en tu captura es 'user' (singular)
             const userDocRef = doc(db, 'user', currentUser.uid);
             const userDoc = await getDoc(userDocRef);
             
             if (userDoc.exists()) {
                 const data = userDoc.data();
-                // Verificación robusta (elimina espacios y acepta minúsculas)
                 const role = data?.role?.toString().trim().toUpperCase();
-                
-                if (role === 'PRO') {
-                    console.log("Usuario PRO detectado");
-                    setIsPro(true);
-                } else {
-                    console.log("Usuario detectado con rol:", role);
-                    setIsPro(false);
-                }
+                setIsPro(role === 'PRO');
             } else {
-                console.log("Documento de usuario no encontrado en colección 'user'");
                 setIsPro(false);
             }
         } catch (error) {
             console.error("Error verificando estatus PRO:", error);
-            console.warn("Posible causa: Reglas de seguridad. Asegúrate de que 'match /user/{userId}' existe en Firestore Rules.");
             setIsPro(false);
         }
       } else {
@@ -84,7 +118,7 @@ function App() {
     setEditingQrId(id);
     setConfig(qrConfig);
     setCurrentView('editor');
-    setActiveTab('content'); // Start at content tab
+    setActiveTab('content'); 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -98,7 +132,6 @@ function App() {
   const handleSave = async () => {
     if (!user) return;
     
-    // Basic validation for dynamic QR
     if (config.qrType === 'dynamic' && !config.shortUrlId.trim()) {
       alert("Por favor, ingresa un ID válido para el enlace corto.");
       return;
@@ -109,35 +142,24 @@ function App() {
     try {
       let finalLogoUrl = config.logoUrl;
 
-      // Upload logo to Storage if it's a base64 string (newly selected file)
-      // Base64 strings from FileReader start with "data:"
       if (config.logoUrl && config.logoUrl.startsWith('data:')) {
-        // Create a reference: userId/timestamp_logo.png
-        // Using timestamp to ensure uniqueness
         const storageRef = ref(storage, `${user.uid}/${Date.now()}_logo`);
-        
-        // Upload the base64 string
         await uploadString(storageRef, config.logoUrl, 'data_url');
-        
-        // Get the public download URL
         finalLogoUrl = await getDownloadURL(storageRef);
       }
 
-      // Prepare data object for Firestore
       const qrData = {
         ...config,
-        logoUrl: finalLogoUrl || null, // Ensure undefined becomes null for Firestore
+        logoUrl: finalLogoUrl || null,
         userId: user.uid,
         updatedAt: Timestamp.now(),
       };
 
       if (editingQrId) {
-        // Update existing document
         const docRef = doc(db, 'qrs', editingQrId);
         await updateDoc(docRef, qrData);
         alert('¡QR actualizado exitosamente!');
       } else {
-        // Create new document
         const newQrData = {
             ...qrData,
             createdAt: Timestamp.now(),
@@ -145,7 +167,6 @@ function App() {
         await addDoc(collection(db, 'qrs'), newQrData);
         alert('¡QR creado exitosamente!');
         
-        // After creating, maybe clear the editor or offer to go to dashboard
         if (confirm("¿Quieres ver tus QRs?")) {
             setCurrentView('dashboard');
         }
@@ -187,6 +208,60 @@ function App() {
     }
   };
 
+  // 1. Vista de Redirección (Pantalla de carga)
+  if (resolvingLink) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+            <div className="flex items-center gap-2 mb-4 animate-pulse">
+            <div className="bg-blue-600 p-2 rounded-xl">
+                <QrCode className="w-8 h-8 text-white" />
+            </div>
+            <span className="text-2xl font-bold text-gray-900 tracking-tight">
+                LinkQR<span className="text-blue-600">.es</span>
+            </span>
+            </div>
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+            <p className="mt-4 text-gray-500 font-medium">Redirigiendo a tu destino...</p>
+        </div>
+    );
+  }
+
+  // 2. Vista de Enlace No Encontrado (404 Personalizado)
+  if (linkError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
+          <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-gray-100 animate-in fade-in zoom-in-95 duration-300">
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+                  <AlertCircle className="w-8 h-8" />
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 mb-2">Enlace no encontrado</h1>
+              <p className="text-gray-500 mb-6 text-sm">
+                  El código QR que has escaneado no existe o ha sido eliminado por su creador.
+              </p>
+              <button 
+                  onClick={() => {
+                      setLinkError(null);
+                      // Limpiar la URL sin recargar
+                      window.history.pushState({}, '', '/');
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors shadow-lg shadow-blue-600/20"
+              >
+                  Crear mi propio QR Gratis
+              </button>
+          </div>
+           <div className="mt-8 flex items-center gap-2 opacity-40 grayscale">
+              <div className="bg-gray-400 p-1 rounded-md">
+                  <QrCode className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-lg font-bold text-gray-400 tracking-tight">
+                  LinkQR<span className="text-gray-500">.es</span>
+              </span>
+            </div>
+      </div>
+    );
+  }
+
+  // 3. Carga de Autenticación (Solo si no estamos redirigiendo)
   if (loadingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -195,10 +270,12 @@ function App() {
     );
   }
 
+  // 4. Vista para No Autenticados
   if (!user) {
     return <Auth />;
   }
 
+  // 5. App Principal (Autenticados)
   return (
     <div className="min-h-screen flex flex-col">
       <Header 
@@ -209,8 +286,6 @@ function App() {
       />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {/* Conditional Rendering based on currentView */}
         
         {currentView === 'dashboard' && (
              <Dashboard 
@@ -237,7 +312,7 @@ function App() {
 
                 <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
                 
-                {/* Left Column: Editor */}
+                {/* Columna Izquierda: Editor */}
                 <div className="flex-1 min-w-0">
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
                         <div className="p-6 border-b border-gray-100 bg-gray-50/50">
@@ -247,10 +322,10 @@ function App() {
                         {renderEditorContent()}
                         </div>
                         
-                        {/* Editor Footer Actions */}
+                        {/* Footer de Acciones */}
                         <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-between items-center sticky bottom-0 z-20">
                         <button 
-                            onClick={handleCreateNew} // Reset to new
+                            onClick={handleCreateNew}
                             disabled={isSaving}
                             className="text-sm text-gray-500 hover:text-gray-800 font-medium px-4 py-2 disabled:opacity-50"
                         >
@@ -277,7 +352,7 @@ function App() {
                     </div>
                 </div>
 
-                {/* Right Column: Preview */}
+                {/* Columna Derecha: Vista Previa */}
                 <div className="w-full lg:w-[420px] flex-shrink-0">
                     <Preview config={config} />
                 </div>

@@ -5,7 +5,7 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
   updateProfile
-} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+} from "firebase/auth";
 import { auth, googleProvider } from '../../firebase';
 
 export const Auth = () => {

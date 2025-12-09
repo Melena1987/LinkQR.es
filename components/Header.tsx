@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { QrCode, User, HelpCircle, LogOut, ChevronDown, LayoutDashboard } from 'lucide-react';
-import { signOut, User as FirebaseUser } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import { signOut, User as FirebaseUser } from "firebase/auth";
 import { auth } from '../firebase';
 import { clsx } from 'clsx';
 

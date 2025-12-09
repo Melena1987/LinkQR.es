@@ -9,7 +9,7 @@ import { INITIAL_CONFIG, PRESETS } from './constants';
 import { Wand2, Loader2 } from 'lucide-react';
 import { Auth } from './components/auth/Auth';
 import { auth } from './firebase';
-import { onAuthStateChanged, User } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import { onAuthStateChanged, User } from "firebase/auth";
 
 function App() {
   const [user, setUser] = useState<User | null>(null);

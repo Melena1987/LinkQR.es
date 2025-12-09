@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
+// Cast import.meta to any to resolve TS error: Property 'env' does not exist on type 'ImportMeta'
 const env = (import.meta as any).env;
 
 const firebaseConfig = {

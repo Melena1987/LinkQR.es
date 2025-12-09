@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Preview } from './components/Preview';
 import { UrlConfig } from './components/editor/UrlConfig';
@@ -6,11 +6,26 @@ import { AppearanceConfig } from './components/editor/AppearanceConfig';
 import { Tabs } from './components/ui/Tabs';
 import { QRConfig, TabType } from './types';
 import { INITIAL_CONFIG, PRESETS } from './constants';
-import { Wand2 } from 'lucide-react';
+import { Wand2, Loader2 } from 'lucide-react';
+import { Auth } from './components/auth/Auth';
+import { auth } from './firebase';
+import { onAuthStateChanged, User } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
 function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
   const [activeTab, setActiveTab] = useState<TabType>('content');
   const [config, setConfig] = useState<QRConfig>(INITIAL_CONFIG);
+
+  // Monitor Authentication State
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoadingAuth(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const updateConfig = (key: keyof QRConfig, value: any) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -48,9 +63,21 @@ function App() {
     }
   };
 
+  if (loadingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Auth />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
+      <Header user={user} />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         

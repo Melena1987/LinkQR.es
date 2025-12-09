@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { QrCode, User, HelpCircle, LogOut, ChevronDown, LayoutDashboard, Sparkles } from 'lucide-react';
+import { QrCode, User, HelpCircle, LogOut, ChevronDown, LayoutDashboard, Sparkles, Plus } from 'lucide-react';
 import { signOut, User as FirebaseUser } from "firebase/auth";
 import { auth } from '../firebase';
 import { clsx } from 'clsx';
@@ -7,14 +7,21 @@ import { clsx } from 'clsx';
 interface HeaderProps {
   user?: FirebaseUser | null;
   isPro?: boolean;
+  onNavigate: (view: 'editor' | 'dashboard' | 'profile') => void;
+  currentView: 'editor' | 'dashboard' | 'profile';
 }
 
-export const Header: React.FC<HeaderProps> = ({ user, isPro = false }) => {
+export const Header: React.FC<HeaderProps> = ({ user, isPro = false, onNavigate, currentView }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
     signOut(auth);
+    setIsMenuOpen(false);
+  };
+
+  const handleNavClick = (view: 'editor' | 'dashboard' | 'profile') => {
+    onNavigate(view);
     setIsMenuOpen(false);
   };
 
@@ -32,7 +39,7 @@ export const Header: React.FC<HeaderProps> = ({ user, isPro = false }) => {
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.location.reload()}>
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => handleNavClick('editor')}>
           <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm">
             <QrCode className="w-6 h-6 text-white" />
           </div>
@@ -51,6 +58,16 @@ export const Header: React.FC<HeaderProps> = ({ user, isPro = false }) => {
         </div>
 
         <nav className="flex items-center gap-6">
+          {currentView !== 'editor' && (
+            <button 
+              onClick={() => handleNavClick('editor')}
+              className="hidden sm:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm shadow-blue-600/20"
+            >
+              <Plus className="w-4 h-4" />
+              Nuevo QR
+            </button>
+          )}
+
           <button className="hidden sm:flex items-center gap-2 text-gray-500 hover:text-blue-600 transition-colors">
             <HelpCircle className="w-5 h-5" />
             <span className="text-sm font-medium">Ayuda</span>
@@ -111,14 +128,20 @@ export const Header: React.FC<HeaderProps> = ({ user, isPro = false }) => {
                         </div>
                     )}
                     
-                    <a href="#" className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors">
+                    <button 
+                        onClick={() => handleNavClick('dashboard')}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors"
+                    >
                         <LayoutDashboard className="w-4 h-4" />
                         Mis QRs
-                    </a>
-                    <a href="#" className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors">
+                    </button>
+                    <button 
+                        onClick={() => handleNavClick('profile')}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors"
+                    >
                         <User className="w-4 h-4" />
                         Perfil
-                    </a>
+                    </button>
                     
                     <div className="border-t border-gray-100 my-1"></div>
                     

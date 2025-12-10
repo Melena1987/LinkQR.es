@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
 import { QrCode, Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
-import { 
-  signInWithPopup, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
-  updateProfile
-} from "firebase/auth";
 import { auth, googleProvider } from '../../firebase';
 
 export const Auth = () => {
@@ -19,7 +13,7 @@ export const Auth = () => {
     setLoading(true);
     setError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      await auth.signInWithPopup(googleProvider);
     } catch (err: any) {
       console.error(err);
       setError("Error al iniciar sesión con Google.");
@@ -40,13 +34,15 @@ export const Auth = () => {
     
     try {
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
+        await auth.signInWithEmailAndPassword(email, password);
       } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         // Set default display name from email part
-        await updateProfile(userCredential.user, {
-            displayName: email.split('@')[0]
-        });
+        if (userCredential.user) {
+            await userCredential.user.updateProfile({
+                displayName: email.split('@')[0]
+            });
+        }
       }
     } catch (err: any) {
       console.error(err);

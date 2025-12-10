@@ -1,10 +1,10 @@
 import React from 'react';
-import { User } from 'firebase/auth';
+import firebase from 'firebase/app';
 import { User as UserIcon, Mail, Shield, Sparkles, Check } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface ProfileProps {
-  user: User;
+  user: firebase.User;
   isPro: boolean;
 }
 

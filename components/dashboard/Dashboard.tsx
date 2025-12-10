@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { User } from 'firebase/auth';
-import { collection, query, where, getDocs, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import firebase from 'firebase/app';
 import { db } from '../../firebase';
 import { QRConfig } from '../../types';
 import { Loader2, Trash2, Edit, Calendar, Link as LinkIcon, ExternalLink, QrCode, Download } from 'lucide-react';
 import { clsx } from 'clsx';
 import { DOMAIN } from '../../constants';
-import qrcode from 'qrcode-generator';
+import { QRCodeSVG } from '../ui/QRCodeSVG';
+import { downloadQR } from '../../utils/qr';
 
 interface DashboardProps {
-  user: User;
+  user: firebase.User;
   onEdit: (id: string, config: QRConfig) => void;
   onCreateNew: () => void;
 }
@@ -31,25 +31,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onEdit, onCreateNew 
 
   const fetchQRs = async () => {
     try {
-      const q = query(
-        collection(db, 'qrs'),
-        where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc')
-      );
+      const snapshot = await db.collection('qrs')
+        .where('userId', '==', user.uid)
+        .orderBy('createdAt', 'desc')
+        .get();
       
-      const querySnapshot = await getDocs(q);
       const fetchedQrs: SavedQR[] = [];
-      querySnapshot.forEach((doc) => {
+      snapshot.forEach((doc) => {
         fetchedQrs.push({ id: doc.id, ...doc.data() } as SavedQR);
       });
       setQrs(fetchedQrs);
     } catch (error) {
       console.error("Error fetching QRs:", error);
       try {
-        const q2 = query(collection(db, 'qrs'), where('userId', '==', user.uid));
-        const querySnapshot = await getDocs(q2);
+        // Fallback if index not created
+        const snapshot = await db.collection('qrs').where('userId', '==', user.uid).get();
         const fetchedQrs: SavedQR[] = [];
-        querySnapshot.forEach((doc) => {
+        snapshot.forEach((doc) => {
            fetchedQrs.push({ id: doc.id, ...doc.data() } as SavedQR);
         });
         fetchedQrs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
@@ -67,7 +65,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onEdit, onCreateNew 
     
     setDeletingId(id);
     try {
-      await deleteDoc(doc(db, 'qrs', id));
+      await db.collection('qrs').doc(id).delete();
       setQrs(prev => prev.filter(q => q.id !== id));
     } catch (error) {
       console.error("Error deleting QR:", error);
@@ -77,125 +75,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onEdit, onCreateNew 
     }
   };
 
-  const handleDownload = (qr: SavedQR) => {
+  const handleDownload = async (qr: SavedQR) => {
     setDownloadingId(qr.id);
-    
-    setTimeout(() => {
-        try {
-            const qrValue = qr.qrType === 'dynamic' 
-                ? `https://${DOMAIN}/${qr.shortUrlId}` 
-                : qr.destinationUrl || 'https://linkqr.es';
-            
-            const typeNumber = 0;
-            const errorCorrectionLevel = 'H';
-            const qrGen = qrcode(typeNumber, errorCorrectionLevel);
-            qrGen.addData(qrValue);
-            qrGen.make();
-
-            const baseSize = 1000;
-            const moduleCount = qrGen.getModuleCount();
-            const moduleSize = baseSize / moduleCount;
-
-            const canvas = document.createElement('canvas');
-            canvas.width = baseSize;
-            canvas.height = baseSize;
-            const ctx = canvas.getContext('2d');
-            
-            if (!ctx) return;
-
-            // Background
-            ctx.fillStyle = qr.bgColor || '#ffffff';
-            ctx.fillRect(0, 0, baseSize, baseSize);
-
-            // Foreground
-            ctx.fillStyle = qr.fgColor || '#000000';
-            
-            for (let row = 0; row < moduleCount; row++) {
-                for (let col = 0; col < moduleCount; col++) {
-                    if (qrGen.isDark(row, col)) {
-                        // Simple square drawing for download from dashboard
-                        // (To retain full style fidelity, we'd need to duplicate logic from Preview.tsx or extract it)
-                        const x = col * moduleSize;
-                        const y = row * moduleSize;
-                        // Use eye color for corners if specified, else fgColor
-                        const isEye = (row < 7 && col < 7) || (row < 7 && col >= moduleCount - 7) || (row >= moduleCount - 7 && col < 7);
-                        ctx.fillStyle = isEye ? (qr.eyeColor || qr.fgColor) : qr.fgColor;
-                        ctx.fillRect(x, y, moduleSize + 0.5, moduleSize + 0.5); // +0.5 to avoid gaps
-                    }
-                }
-            }
-
-            // Draw Logo if exists
-            if (qr.logoUrl) {
-                const logoImg = new Image();
-                logoImg.crossOrigin = "Anonymous";
-                logoImg.src = qr.logoUrl;
-                logoImg.onload = () => {
-                    const logoSizeRatio = (qr.logoPadding || 35) / 150; 
-                    const logoPixelSize = baseSize * logoSizeRatio;
-                    const logoX = (baseSize - logoPixelSize) / 2;
-                    const logoY = (baseSize - logoPixelSize) / 2;
-                    ctx.drawImage(logoImg, logoX, logoY, logoPixelSize, logoPixelSize);
-                    triggerDownload();
-                };
-                logoImg.onerror = () => triggerDownload(); // Download anyway if logo fails
-            } else {
-                triggerDownload();
-            }
-
-            function triggerDownload() {
-                const link = document.createElement("a");
-                link.download = `${qr.title || 'qrcode'}.png`;
-                link.href = canvas.toDataURL("image/png");
-                link.click();
-                setDownloadingId(null);
-            }
-
-        } catch (e) {
-            console.error("Download failed", e);
-            alert("Error al generar la descarga.");
-            setDownloadingId(null);
-        }
-    }, 100);
-  };
-
-  // Thumbnail Renderer Component
-  const QRThumbnail = ({ config }: { config: SavedQR }) => {
     try {
-        const qrValue = config.qrType === 'dynamic' 
-            ? `https://${DOMAIN}/${config.shortUrlId}` 
-            : config.destinationUrl || 'https://linkqr.es';
-        
-        const qr = qrcode(0, 'M'); // Lower error correction for thumbnail is fine/faster
-        qr.addData(qrValue);
-        qr.make();
-        const count = qr.getModuleCount();
-        
-        return (
-            <svg viewBox={`0 0 ${count} ${count}`} className="w-full h-full" style={{ backgroundColor: config.bgColor }}>
-                <rect width="100%" height="100%" fill={config.bgColor} />
-                {Array.from({ length: count }).map((_, r) => 
-                    Array.from({ length: count }).map((_, c) => {
-                        if (qr.isDark(r, c)) {
-                             const isEye = (r < 7 && c < 7) || (r < 7 && c >= count - 7) || (r >= count - 7 && c < 7);
-                             return (
-                                <rect 
-                                    key={`${r}-${c}`}
-                                    x={c} 
-                                    y={r} 
-                                    width={1.05} 
-                                    height={1.05} 
-                                    fill={isEye ? config.eyeColor : config.fgColor} 
-                                />
-                             );
-                        }
-                        return null;
-                    })
-                )}
-            </svg>
-        );
-    } catch (e) {
-        return <QrCode className="w-full h-full text-gray-300 p-2" />;
+        await downloadQR(qr);
+    } catch(e) {
+        console.error(e);
+    } finally {
+        setDownloadingId(null);
     }
   };
 
@@ -243,18 +130,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onEdit, onCreateNew 
               <div className="p-5 flex gap-4">
                 {/* Left: Thumbnail */}
                 <div className="w-24 h-24 flex-shrink-0 bg-gray-50 rounded-lg border border-gray-100 overflow-hidden relative group">
-                    <QRThumbnail config={qr} />
-                    {/* Logo Overlay on Thumbnail */}
-                    {qr.logoUrl && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <img 
-                                src={qr.logoUrl} 
-                                className="object-contain" 
-                                style={{ width: '25%', height: '25%' }} 
-                                alt="logo" 
-                            />
-                        </div>
-                    )}
+                   <QRCodeSVG config={qr} className="w-full h-full" />
                 </div>
 
                 {/* Right: Info */}

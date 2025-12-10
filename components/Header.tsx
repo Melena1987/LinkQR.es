@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { QrCode, User, HelpCircle, LogOut, ChevronDown, LayoutDashboard, Sparkles, Plus } from 'lucide-react';
-import firebase from 'firebase/app';
+import { signOut, User as FirebaseUser } from "firebase/auth";
 import { auth } from '../firebase';
 import { clsx } from 'clsx';
 
 interface HeaderProps {
-  user?: firebase.User | null;
+  user?: FirebaseUser | null;
   isPro?: boolean;
   onNavigate: (view: 'editor' | 'dashboard' | 'profile') => void;
   currentView: 'editor' | 'dashboard' | 'profile';
@@ -16,7 +16,7 @@ export const Header: React.FC<HeaderProps> = ({ user, isPro = false, onNavigate,
   const menuRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
-    auth.signOut();
+    signOut(auth);
     setIsMenuOpen(false);
   };
 

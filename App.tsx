@@ -11,7 +11,9 @@ import { INITIAL_CONFIG, PRESETS } from './constants';
 import { Wand2, Loader2, QrCode, AlertCircle } from 'lucide-react';
 import { Auth } from './components/auth/Auth';
 import { auth, db, storage } from './firebase';
-import firebase from 'firebase/app';
+import { onAuthStateChanged, User } from "firebase/auth";
+import { collection, addDoc, Timestamp, doc, getDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 type ViewType = 'editor' | 'dashboard' | 'profile';
 
@@ -34,7 +36,7 @@ function App() {
   const [linkError, setLinkError] = useState<string | null>(null);
 
   // Estado de la App
-  const [user, setUser] = useState<firebase.User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isPro, setIsPro] = useState(false);
@@ -56,7 +58,8 @@ function App() {
         
         const resolveUrl = async () => {
             try {
-                const snapshot = await db.collection('qrs').where('shortUrlId', '==', slug).get();
+                const q = query(collection(db, 'qrs'), where('shortUrlId', '==', slug));
+                const snapshot = await getDocs(q);
                 
                 if (!snapshot.empty) {
                     const data = snapshot.docs[0].data();
@@ -83,14 +86,15 @@ function App() {
 
   // Monitor de Autenticación
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
       if (currentUser) {
         try {
-            const userDoc = await db.collection('user').doc(currentUser.uid).get();
+            const userDocRef = doc(db, 'user', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
             
-            if (userDoc.exists) {
+            if (userDoc.exists()) {
                 const data = userDoc.data();
                 const role = data?.role?.toString().trim().toUpperCase();
                 setIsPro(role === 'PRO');
@@ -147,27 +151,28 @@ function App() {
       let finalLogoUrl = config.logoUrl;
 
       if (config.logoUrl && config.logoUrl.startsWith('data:')) {
-        const storageRef = storage.ref(`${user.uid}/${Date.now()}_logo`);
-        await storageRef.putString(config.logoUrl, 'data_url');
-        finalLogoUrl = await storageRef.getDownloadURL();
+        const storageRef = ref(storage, `${user.uid}/${Date.now()}_logo`);
+        await uploadString(storageRef, config.logoUrl, 'data_url');
+        finalLogoUrl = await getDownloadURL(storageRef);
       }
 
       const qrData = {
         ...config,
         logoUrl: finalLogoUrl || null,
         userId: user.uid,
-        updatedAt: firebase.firestore.Timestamp.now(),
+        updatedAt: Timestamp.now(),
       };
 
       if (editingQrId) {
-        await db.collection('qrs').doc(editingQrId).update(qrData);
+        const docRef = doc(db, 'qrs', editingQrId);
+        await updateDoc(docRef, qrData);
         alert('¡QR actualizado exitosamente!');
       } else {
         const newQrData = {
             ...qrData,
-            createdAt: firebase.firestore.Timestamp.now(),
+            createdAt: Timestamp.now(),
         };
-        await db.collection('qrs').add(newQrData);
+        await addDoc(collection(db, 'qrs'), newQrData);
         alert('¡QR creado exitosamente!');
         
         if (confirm("¿Quieres ver tus QRs?")) {

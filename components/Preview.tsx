@@ -1,57 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { QRConfig } from '../types';
 import { DOMAIN } from '../constants';
-import { Download, Share2, FileCode, FileImage } from 'lucide-react';
+import { Download, Share2, FileCode, FileImage, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { QRCodeSVG } from './ui/QRCodeSVG';
-import { generateSVGString } from '../utils/qr';
+import { downloadQrCode } from '../utils/qr';
 
 interface PreviewProps {
   config: QRConfig;
 }
 
 export const Preview: React.FC<PreviewProps> = ({ config }) => {
+  const [downloading, setDownloading] = useState<'png' | 'svg' | null>(null);
+
   const qrValue = config.qrType === 'dynamic' 
     ? `https://${DOMAIN}/${config.shortUrlId}` 
     : config.destinationUrl || 'https://linkqr.es';
 
-  // --- Download Logic ---
-
-  const downloadPng = () => {
-    // Generate the SVG String using the utility (ensures fidelity)
-    const svgString = generateSVGString(config);
-    const baseSize = 1000;
-    
-    const canvas = document.createElement("canvas");
-    canvas.width = baseSize;
-    canvas.height = baseSize;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const img = new Image();
-    const svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
-    const url = URL.createObjectURL(svgBlob);
-
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, baseSize, baseSize);
-      URL.revokeObjectURL(url);
-      
-      const link = document.createElement("a");
-      link.download = `${config.title || 'qrcode'}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    };
-    img.src = url;
-  };
-  
-  const downloadSvg = () => {
-    const svgString = generateSVGString(config);
-    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.download = `${config.title || 'qrcode'}.svg`;
-    link.href = url;
-    link.click();
+  const handleDownload = async (format: 'png' | 'svg') => {
+      setDownloading(format);
+      try {
+        await downloadQrCode(config, format, config.title || 'qrcode');
+      } catch (error) {
+        console.error(error);
+        alert('Error al descargar');
+      } finally {
+        setDownloading(null);
+      }
   };
 
   const handleShare = async () => {
@@ -147,18 +122,20 @@ export const Preview: React.FC<PreviewProps> = ({ config }) => {
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
             <button 
-                onClick={downloadPng}
-                className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-xl font-semibold shadow-lg shadow-blue-600/20 transition-all transform active:scale-95"
+                onClick={() => handleDownload('png')}
+                disabled={!!downloading}
+                className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-xl font-semibold shadow-lg shadow-blue-600/20 transition-all transform active:scale-95 disabled:opacity-70 disabled:active:scale-100"
             >
-            <FileImage className="w-4 h-4" />
+            {downloading === 'png' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileImage className="w-4 h-4" />}
             <span className="text-sm">PNG (HD)</span>
             </button>
             
             <button 
-                onClick={downloadSvg}
-                className="flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 py-3 px-4 rounded-xl font-semibold shadow-sm transition-all active:scale-95"
+                onClick={() => handleDownload('svg')}
+                disabled={!!downloading}
+                className="flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 py-3 px-4 rounded-xl font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-70 disabled:active:scale-100"
             >
-            <FileCode className="w-4 h-4" />
+            {downloading === 'svg' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCode className="w-4 h-4" />}
             <span className="text-sm">SVG (Vector)</span>
             </button>
         </div>

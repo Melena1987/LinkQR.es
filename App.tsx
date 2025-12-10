@@ -41,8 +41,8 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isPro, setIsPro] = useState(false);
 
-  // Estado de Navegación
-  const [currentView, setCurrentView] = useState<ViewType>('editor');
+  // Estado de Navegación - Default to 'dashboard'
+  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
 
   // Estado del Editor
   const [activeTab, setActiveTab] = useState<TabType>('content');
@@ -167,6 +167,8 @@ function App() {
         const docRef = doc(db, 'qrs', editingQrId);
         await updateDoc(docRef, qrData);
         alert('¡QR actualizado exitosamente!');
+        // Return to dashboard after edit
+        setCurrentView('dashboard');
       } else {
         const newQrData = {
             ...qrData,
@@ -174,10 +176,7 @@ function App() {
         };
         await addDoc(collection(db, 'qrs'), newQrData);
         alert('¡QR creado exitosamente!');
-        
-        if (confirm("¿Quieres ver tus QRs?")) {
-            setCurrentView('dashboard');
-        }
+        setCurrentView('dashboard');
       }
       
     } catch (error) {

@@ -40,6 +40,11 @@ export const QRCodeSVG: React.FC<QRCodeSVGProps> = ({ config, className, id }) =
     );
   };
 
+  // Must match LOGO_SIZE_DIVIDER in utils/qr.ts
+  const LOGO_DIVIDER = 150; 
+  const logoSize = (config.logoPadding / LOGO_DIVIDER) * count;
+  const logoPos = (count - logoSize) / 2;
+
   return (
     <svg 
       id={id}
@@ -61,10 +66,10 @@ export const QRCodeSVG: React.FC<QRCodeSVGProps> = ({ config, className, id }) =
       {config.logoUrl && (
          <image 
             href={config.logoUrl} 
-            x={(count - ((config.logoPadding / 150) * count)) / 2}
-            y={(count - ((config.logoPadding / 150) * count)) / 2}
-            width={(config.logoPadding / 150) * count}
-            height={(config.logoPadding / 150) * count}
+            x={logoPos}
+            y={logoPos}
+            width={logoSize}
+            height={logoSize}
          />
       )}
     </svg>

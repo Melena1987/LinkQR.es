@@ -7,6 +7,11 @@ interface QRMatrix {
   count: number;
 }
 
+// Factor to scale the logo size relative to the QR size. 
+// Matches the slider values (20-80) to a reasonable percentage of the QR code.
+// Using 150 divider: 45 / 150 = 0.3 (30% coverage)
+const LOGO_SIZE_DIVIDER = 150;
+
 export const generateQRMatrix = (config: QRConfig): QRMatrix => {
   const qrValue = config.qrType === 'dynamic' 
     ? `https://${DOMAIN}/${config.shortUrlId}` 
@@ -43,12 +48,20 @@ export const isEyeZone = (r: number, c: number, count: number): boolean => {
 // Helper to determine if a module is behind the logo
 export const isBehindLogo = (r: number, c: number, count: number, logoPadding: number, hasLogo: boolean): boolean => {
   if (!hasLogo) return false;
+  
   // Normalized heuristic matching the rendering logic
-  const logoModuleSize = Math.floor(count * (logoPadding / 250)); 
+  // We use the same divider as the visual rendering to ensure the mask matches the image size
+  const logoModuleSize = Math.floor(count * (logoPadding / LOGO_SIZE_DIVIDER)); 
+  
+  // Add a small buffer (1 module) to ensure clean clearance
+  const buffer = 1;
+  const sizeWithBuffer = logoModuleSize + (buffer * 2);
+
   const center = count / 2;
-  const logoStart = center - logoModuleSize / 2;
-  const logoEnd = center + logoModuleSize / 2;
-  return r >= logoStart && r < logoEnd && c >= logoStart && c < logoEnd;
+  const start = Math.floor(center - sizeWithBuffer / 2);
+  const end = Math.floor(center + sizeWithBuffer / 2);
+  
+  return r >= start && r < end && c >= start && c < end;
 };
 
 export const getEyePaths = (x: number, y: number, style: QRConfig['eyeStyle']) => {
@@ -101,7 +114,7 @@ export const getModulePath = (x: number, y: number, style: QRConfig['dotStyle'])
 };
 
 /**
- * Generates a full SVG string for download purposes without needing the DOM
+ * Generates a full SVG string for download purposes
  */
 export const generateSVGString = (config: QRConfig): string => {
   const { modules, count } = generateQRMatrix(config);
@@ -131,11 +144,10 @@ export const generateSVGString = (config: QRConfig): string => {
     });
   });
 
-  const logoSize = (config.logoPadding / 150) * count;
+  const logoSize = (config.logoPadding / LOGO_SIZE_DIVIDER) * count;
   const logoPos = (count - logoSize) / 2;
 
-  // Note: For standard <img> tags in HTML, base64 works. 
-  // For drawing to Canvas from this SVG, the image needs to be embedded properly.
+  // Ensure the image has x/y attributes properly set
   const logoElement = config.logoUrl 
     ? `<image href="${config.logoUrl}" x="${logoPos}" y="${logoPos}" height="${logoSize}" width="${logoSize}" />`
     : '';
@@ -149,4 +161,78 @@ export const generateSVGString = (config: QRConfig): string => {
       ${logoElement}
     </svg>
   `;
+};
+
+// Helper to fetch image and convert to base64
+// This is critical for PNG downloads to work with external URLs (CORS)
+const getBase64Image = async (url: string): Promise<string> => {
+    if (url.startsWith('data:')) return url;
+    
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.warn('Failed to convert image to base64', error);
+      return url; // Fallback to original URL
+    }
+};
+
+export const downloadQrCode = async (config: QRConfig, format: 'png' | 'svg', filename: string) => {
+    // Clone config to avoid mutation of the original state object
+    const configForDownload = { ...config };
+
+    // If there is a logo URL and it's not data:, convert it to base64
+    // This ensures that when we put it into the SVG and then draw that SVG to a canvas,
+    // the browser doesn't block the external image resource.
+    if (configForDownload.logoUrl && !configForDownload.logoUrl.startsWith('data:')) {
+        try {
+            configForDownload.logoUrl = await getBase64Image(configForDownload.logoUrl);
+        } catch (e) {
+            console.error("Could not process logo for download", e);
+        }
+    }
+
+    const svgString = generateSVGString(configForDownload);
+    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    if (format === 'svg') {
+        const link = document.createElement("a");
+        link.download = `${filename}.svg`;
+        link.href = url;
+        link.click();
+        URL.revokeObjectURL(url);
+    } else {
+        // PNG Download
+        const baseSize = 2000; // High resolution for print
+        const canvas = document.createElement("canvas");
+        canvas.width = baseSize;
+        canvas.height = baseSize;
+        const ctx = canvas.getContext("2d");
+        
+        if (!ctx) return;
+
+        const img = new Image();
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0, baseSize, baseSize);
+            URL.revokeObjectURL(url);
+            
+            const link = document.createElement("a");
+            link.download = `${filename}.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        };
+        img.onerror = (e) => {
+            console.error("Error drawing SVG to canvas", e);
+            // Fallback: try to download just the SVG blob URL if PNG fails (rare)
+            URL.revokeObjectURL(url);
+        }
+        img.src = url;
+    }
 };

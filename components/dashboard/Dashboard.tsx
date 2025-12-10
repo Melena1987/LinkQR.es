@@ -7,7 +7,7 @@ import { Loader2, Trash2, Edit, Calendar, Link as LinkIcon, ExternalLink, QrCode
 import { clsx } from 'clsx';
 import { DOMAIN } from '../../constants';
 import { QRCodeSVG } from '../ui/QRCodeSVG';
-import { generateSVGString } from '../../utils/qr';
+import { downloadQrCode } from '../../utils/qr';
 
 interface DashboardProps {
   user: User;
@@ -79,50 +79,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onEdit, onCreateNew 
     }
   };
 
-  const handleDownload = (qr: SavedQR) => {
+  const handleDownload = async (qr: SavedQR) => {
     setDownloadingId(qr.id);
     
-    // Give UI a moment to show spinner
-    setTimeout(() => {
-        try {
-            // Generate the exact same SVG string used in Preview/Thumbnails
-            const svgString = generateSVGString(qr);
-            
-            const baseSize = 1000;
-            const canvas = document.createElement('canvas');
-            canvas.width = baseSize;
-            canvas.height = baseSize;
-            const ctx = canvas.getContext('2d');
-            
-            if (!ctx) return;
-
-            const img = new Image();
-            // Create a Blob to handle special characters and size properly
-            const svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
-            const url = URL.createObjectURL(svgBlob);
-
-            img.onload = () => {
-                ctx.drawImage(img, 0, 0, baseSize, baseSize);
-                URL.revokeObjectURL(url);
-                
-                const link = document.createElement("a");
-                link.download = `${qr.title || 'qrcode'}.png`;
-                link.href = canvas.toDataURL("image/png");
-                link.click();
-                setDownloadingId(null);
-            };
-            img.onerror = () => {
-                console.error("Error loading SVG for download");
-                setDownloadingId(null);
-            };
-            img.src = url;
-
-        } catch (e) {
-            console.error("Download failed", e);
-            alert("Error al generar la descarga.");
-            setDownloadingId(null);
-        }
-    }, 100);
+    try {
+        await downloadQrCode(qr, 'png', qr.title || 'qrcode');
+    } catch (e) {
+        console.error("Download failed", e);
+        alert("Error al generar la descarga.");
+    } finally {
+        setDownloadingId(null);
+    }
   };
 
   if (loading) {
@@ -167,7 +134,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onEdit, onCreateNew 
           {qrs.map((qr) => (
             <div key={qr.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
               <div className="p-5 flex gap-4">
-                {/* Left: Thumbnail - Using Shared Component for perfect fidelity */}
+                {/* Left: Thumbnail */}
                 <div className="w-24 h-24 flex-shrink-0 bg-gray-50 rounded-lg border border-gray-100 overflow-hidden relative">
                     <QRCodeSVG config={qr} className="w-full h-full" />
                 </div>
